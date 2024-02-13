@@ -1,0 +1,59 @@
+version: "3.4"
+
+services:
+  postgres:
+    container_name: postgres
+    image: postgres:latest
+    restart: unless-stopped
+    volumes:
+      - ${HOST_VOLUME_PATH}/main_db:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: db
+    ports:
+      - "5432:5432"
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4
+    restart: unless-stopped
+    volumes:
+      - ${HOST_VOLUME_PATH}/pgadmin:/var/lib/pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: 123
+    ports:
+      - "5050:80"
+  reverse-proxy:
+    image: traefik
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - letsencrypt:/letsencrypt
+    labels:
+      - "traefik.http.middlewares.testHeader.headers.customrequestheaders.Cache-Control=no-cache"
+      - "traefik.http.middlewares.testHeader.headers.customrequestheaders.Pragma=no-cache"
+  api:
+    build:
+      context: "."
+      dockerfile: backend/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Docker
+      - ASPNETCORE_URLS=http://0.0.0.0:7001
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.webserver.rule=Host(`host.com`)"
+      - "traefik.http.routers.webserver.tls=true"
+      - "traefik.http.routers.webserver.tls.certresolver=myresolver"
+      - "traefik.http.routers.webserver.entrypoints=web,websecure"
+      - "traefik.http.services.webserver.loadbalancer.server.port=7001"
+    depends_on:
+      - reverse-proxy
+      - postgres
+      - pgadmin
+volumes:
+  letsencrypt:
+#docker run --name db -e POSTGRES_USER=user -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres:latest
